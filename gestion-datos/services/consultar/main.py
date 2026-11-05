@@ -36,7 +36,7 @@ def consultar(documento: str, usuario: str = Depends(get_user)):
 
 
 @app.get("/personas/{documento}/foto")
-def foto(documento: str):
+def foto(documento: str, usuario: str = Depends(get_user)):
     validar_documento(documento)
     with cursor() as cur:
         cur.execute("SELECT foto, foto_tipo FROM personas WHERE nro_documento=%s", (documento,))

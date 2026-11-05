@@ -4,6 +4,13 @@ server {
     root /usr/share/nginx/html;            # así nginx arranca aunque "consultar" esté apagado.
     client_max_body_size 3m;
 
+    # Configuración que lee el frontend al cargar (sin recompilar nada)
+    location = /config.json {
+        default_type application/json;
+        add_header Cache-Control "no-store";
+        return 200 '{"authEnabled": ${FRONT_AUTH_ENABLED}, "issuer": "${FRONT_OIDC_ISSUER}", "clientId": "${FRONT_OIDC_CLIENT}", "n8nUrl": "${FRONT_N8N_URL}"}';
+    }
+
     location / { try_files $uri /index.html; }
 
     # /api/<servicio>/<ruta>  ->  http://<servicio>:8000/<ruta>

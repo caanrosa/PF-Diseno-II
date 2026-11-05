@@ -1,4 +1,5 @@
-"""Validación de JWT. Aún en desarrollo (AUTH_ENABLED=false) y se asume como que estamos usando un usuario de prueba."""
+"""Validación de JWT emitido por un proveedor OIDC (Keycloak / Entra ID / Roble).
+En desarrollo AUTH_ENABLED=false y se asume un usuario de prueba."""
 import os
 import jwt
 from jwt import PyJWKClient

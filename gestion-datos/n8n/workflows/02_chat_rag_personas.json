@@ -1,0 +1,234 @@
+{
+  "id": "chatRagPersonas01",
+  "name": "02 - Chat RAG de personas",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "B1",
+      "name": "Nota B1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        -200
+      ],
+      "parameters": {
+        "content": "## Flujo B: consulta en lenguaje natural (RAG)\nAbra el chat con el botón **Open chat** de esta pantalla y pregunte, por ejemplo: «¿Cuál es el empleado más joven que se ha registrado?».\nEl agente combina dos herramientas: **buscar_personas** (búsqueda semántica en pgvector) y **consultar_sql** (SELECT de solo lectura con el rol n8n_ro) para las preguntas de agregación.\nRequiere haber ejecutado antes el flujo 01 (ingesta) y tener las credenciales de OpenAI y Postgres configuradas.",
+        "height": 170,
+        "width": 820
+      }
+    },
+    {
+      "id": "B2",
+      "name": "Chat de n8n",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        120
+      ],
+      "parameters": {
+        "public": false,
+        "options": {}
+      },
+      "webhookId": "ea276f74-d076-424d-97c6-f21e6f479caa"
+    },
+    {
+      "id": "B3",
+      "name": "Agente de personas",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        300,
+        120
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "Eres un asistente que responde preguntas en español sobre las personas registradas en la aplicación Gestión de Datos Personales.\n\nDispones de dos herramientas:\n1. buscar_personas: búsqueda semántica sobre fichas de personas (nombre, documento, fecha de nacimiento y género). Úsala para preguntas descriptivas, por ejemplo: quién tiene cierto apellido o nombre.\n2. consultar_sql: ejecuta una consulta SELECT de solo lectura sobre la tabla personas. Úsala SIEMPRE para preguntas de agregación, comparación o conteo (el más joven, el mayor, cuántas personas hay, promedios de edad, filtros por género o por año).\n\nTabla personas (PostgreSQL): nro_documento, tipo_documento ('T.I' o 'C.C'), primer_nombre, segundo_nombre (puede ser nulo), apellidos, fecha_nacimiento (DATE), genero ('Masculino','Femenino','No binario','Prefiero no reportar'), correo, celular, creado_en.\nEjemplo para el más joven: SELECT primer_nombre, segundo_nombre, apellidos, fecha_nacimiento FROM personas ORDER BY fecha_nacimiento DESC LIMIT 1;\nPara la edad usa date_part('year', age(fecha_nacimiento)).\n\nReglas:\n- Responde solo con la información obtenida de las herramientas. Si no hay datos que respondan la pregunta, dilo claramente; no inventes personas ni valores.\n- Ante empates, menciona a todas las personas empatadas.\n- Genera únicamente consultas SELECT. Nunca intentes modificar datos.\n- No reveles correo ni celular a menos que la pregunta lo pida de forma explícita.\n- Responde de forma breve y natural. Ejemplo: «La persona más joven registrada es Pedro Pérez, nacido el 5 de marzo de 2001.»",
+          "maxIterations": 8
+        }
+      }
+    },
+    {
+      "id": "B4",
+      "name": "Modelo de chat",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        60,
+        380
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-4o-mini"
+        },
+        "options": {
+          "temperature": 0
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "oaiPersonas00001",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "id": "B5",
+      "name": "Memoria de conversación",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        280,
+        380
+      ],
+      "parameters": {
+        "sessionIdType": "fromInput",
+        "contextWindowLength": 8
+      }
+    },
+    {
+      "id": "B6",
+      "name": "buscar_personas",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePGVector",
+      "typeVersion": 1.3,
+      "position": [
+        500,
+        380
+      ],
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Búsqueda semántica de fichas de personas registradas (nombre completo, documento, fecha de nacimiento y género). Úsala para preguntas descriptivas como quién tiene cierto nombre o apellido. No sirve para calcular máximos, mínimos ni conteos.",
+        "tableName": "personas_vectores",
+        "topK": 6,
+        "includeDocumentMetadata": true,
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pgN8nRo00000001",
+          "name": "Postgres n8n_ro (solo lectura)"
+        }
+      }
+    },
+    {
+      "id": "B7",
+      "name": "Embeddings OpenAI (consulta)",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        500,
+        600
+      ],
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "oaiPersonas00001",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "id": "B8",
+      "name": "consultar_sql",
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        760,
+        380
+      ],
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Ejecuta una consulta SQL SELECT de solo lectura sobre la tabla personas (PostgreSQL) y devuelve las filas. Úsala para preguntas de agregación, comparación o conteo.",
+        "resource": "database",
+        "operation": "executeQuery",
+        "query": "{{ $fromAI('consulta_sql', 'Una única sentencia SQL SELECT sobre la tabla personas', 'string') }}",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pgN8nRo00000001",
+          "name": "Postgres n8n_ro (solo lectura)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Chat de n8n": {
+      "main": [
+        [
+          {
+            "node": "Agente de personas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modelo de chat": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agente de personas",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memoria de conversación": {
+      "ai_memory": [
+        [
+          {
+            "node": "Agente de personas",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "buscar_personas": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente de personas",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_sql": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente de personas",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI (consulta)": {
+      "ai_embedding": [
+        [
+          {
+            "node": "buscar_personas",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

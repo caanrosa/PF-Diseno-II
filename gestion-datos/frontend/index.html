@@ -36,9 +36,9 @@
 </style>
 </head>
 <body>
-<header><h1>GESTIÓN DE DATOS PERSONALES</h1></header>
+<header style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap"><h1>GESTIÓN DE DATOS PERSONALES</h1><div id="sesion" style="font-size:.9rem"></div></header>
 <nav id="menu"></nav>
-<main>
+<main hidden>
   <section id="crear"><h2>Crear persona</h2><form id="f-crear"></form><div class="msg" id="m-crear"></div></section>
 
   <section id="modificar"><h2>Modificar datos personales</h2>
@@ -70,7 +70,6 @@
 
 <script>
 const $ = s => document.querySelector(s);
-const N8N_URL = 'http://localhost:5678';   // chat de lenguaje natural (n8n)
 
 /* ---------- Menú ---------- */
 const OPCIONES = [['crear','Crear Personas'],['modificar','Modificar Datos Personales'],
@@ -78,18 +77,86 @@ const OPCIONES = [['crear','Crear Personas'],['modificar','Modificar Datos Perso
 const menu = $('#menu');
 OPCIONES.forEach(([id, txt]) => { const b = document.createElement('button'); b.textContent = txt; b.dataset.id = id;
   b.onclick = () => mostrar(id); menu.appendChild(b); });
-menu.insertAdjacentHTML('beforeend', `<a href="${N8N_URL}" target="_blank" rel="noopener">Consulta en Lenguaje Natural (n8n) ↗</a>`);
+menu.insertAdjacentHTML('beforeend', `<a id="n8n-link" href="#" target="_blank" rel="noopener">Consulta en Lenguaje Natural (n8n) ↗</a>`);
 function mostrar(id) {
   document.querySelectorAll('section').forEach(s => s.classList.toggle('on', s.id === id));
   menu.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.id === id));
 }
 
+/* ---------- Autenticación (OpenID Connect: código de autorización + PKCE) ---------- */
+let CFG = { authEnabled: false }, TOK = null;
+const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const rand = n => b64u(crypto.getRandomValues(new Uint8Array(n)));
+const SIN_FIN = () => new Promise(() => {});           // la página se está redirigiendo
+function loadTok() { try { TOK = JSON.parse(sessionStorage.getItem('tok')); } catch { TOK = null; } }
+function saveTok(t) {
+  TOK = { access: t.access_token, refresh: t.refresh_token, id: t.id_token, exp: Date.now() + (t.expires_in - 10) * 1000 };
+  sessionStorage.setItem('tok', JSON.stringify(TOK));
+}
+async function login() {
+  const verifier = rand(48), state = rand(16);
+  sessionStorage.setItem('pkce', JSON.stringify({ verifier, state }));
+  const challenge = b64u(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+  const q = new URLSearchParams({ client_id: CFG.clientId, redirect_uri: location.origin + '/', response_type: 'code',
+    scope: 'openid', code_challenge: challenge, code_challenge_method: 'S256', state });
+  location.href = CFG.issuer + '/protocol/openid-connect/auth?' + q;
+  return SIN_FIN();
+}
+async function tokenReq(body) {
+  const r = await fetch(CFG.issuer + '/protocol/openid-connect/token', { method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: CFG.clientId, ...body }) });
+  if (!r.ok) throw new Error('No se pudo obtener el token');
+  return r.json();
+}
+async function initAuth() {
+  CFG = await (await fetch('/config.json')).json();
+  if (!CFG.authEnabled) return;
+  loadTok();
+  const p = new URLSearchParams(location.search);
+  if (p.has('code')) {
+    const s = JSON.parse(sessionStorage.getItem('pkce') || 'null');
+    history.replaceState({}, '', '/');
+    if (!s || s.state !== p.get('state')) return login();
+    try { saveTok(await tokenReq({ grant_type: 'authorization_code', code: p.get('code'),
+            redirect_uri: location.origin + '/', code_verifier: s.verifier })); }
+    catch { return login(); }
+    sessionStorage.removeItem('pkce');
+  }
+  if (!TOK) return login();
+}
+async function getToken() {
+  if (!CFG.authEnabled) return null;
+  if (TOK && Date.now() < TOK.exp) return TOK.access;
+  try { saveTok(await tokenReq({ grant_type: 'refresh_token', refresh_token: TOK.refresh })); return TOK.access; }
+  catch { sessionStorage.removeItem('tok'); TOK = null; return login(); }
+}
+function nombreUsuario() {
+  try { return JSON.parse(atob(TOK.access.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).preferred_username || ''; } catch { return ''; }
+}
+function logout() {
+  const id = TOK && TOK.id; sessionStorage.clear();
+  const q = new URLSearchParams({ client_id: CFG.clientId, post_logout_redirect_uri: location.origin + '/' });
+  if (id) q.set('id_token_hint', id);
+  location.href = CFG.issuer + '/protocol/openid-connect/logout?' + q;
+}
+
 /* ---------- Utilidades ---------- */
 async function api(url, opts = {}) {
+  const t = await getToken();
+  if (t) opts.headers = { ...(opts.headers || {}), Authorization: 'Bearer ' + t };
   const r = await fetch(url, opts);
+  if (r.status === 401 && CFG.authEnabled) { sessionStorage.removeItem('tok'); TOK = null; return login(); }
   let data = null; try { data = await r.json(); } catch {}
   if (!r.ok) { const d = data && data.detail; throw new Error(Array.isArray(d) ? d.join('\n') : (d || r.statusText)); }
   return data;
+}
+async function cargarFotos(el) {          // las fotos exigen token, por eso no se usa <img src> directo
+  for (const img of el.querySelectorAll('img[data-doc]')) {
+    try { const t = await getToken();
+      const r = await fetch('/api/consultar/personas/' + encodeURIComponent(img.dataset.doc) + '/foto', { headers: t ? { Authorization: 'Bearer ' + t } : {} });
+      if (r.ok) img.src = URL.createObjectURL(await r.blob()); } catch {}
+  }
 }
 function msg(id, texto, ok = true) { const el = $('#m-' + id); el.className = 'msg ' + (ok ? 'ok' : 'err'); el.textContent = texto; }
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -153,7 +220,7 @@ $('#f-modificar').onsubmit = async e => { e.preventDefault();
 /* ---------- Consultar ---------- */
 const ETIQ = { 'T.I': 'Tarjeta de identidad', 'C.C': 'Cédula' };
 function ficha(p) {
-  const foto = p.tiene_foto ? `<img alt="Foto" src="/api/consultar/personas/${esc(p.nro_documento)}/foto">` : '';
+  const foto = p.tiene_foto ? `<img alt="Foto" data-doc="${esc(p.nro_documento)}">` : '';
   return `<div class="ficha">${foto}<dl>
     <dt>Documento</dt><dd>${esc(ETIQ[p.tipo_documento])} ${esc(p.nro_documento)}</dd>
     <dt>Nombre</dt><dd>${esc(p.primer_nombre)} ${esc(p.segundo_nombre)} ${esc(p.apellidos)}</dd>
@@ -163,7 +230,8 @@ function ficha(p) {
 $('#f-consultar').onsubmit = async e => { e.preventDefault();
   const doc = (new FormData(e.target).get('doc') || '').trim(); const out = $('#r-consultar'); out.innerHTML = '';
   try { if (doc) { out.innerHTML = ficha(await api('/api/consultar/personas/' + encodeURIComponent(doc))); msg('consultar', ''); }
-        else { const l = await api('/api/consultar/personas'); out.innerHTML = l.map(ficha).join('<hr>'); msg('consultar', l.length + ' registro(s)'); } }
+        else { const l = await api('/api/consultar/personas'); out.innerHTML = l.map(ficha).join('<hr>'); msg('consultar', l.length + ' registro(s)'); }
+        cargarFotos(out); }
   catch (err) { msg('consultar', err.message, false); } };
 
 /* ---------- Borrar ---------- */
@@ -181,7 +249,15 @@ $('#f-logs').onsubmit = async e => { e.preventDefault();
           l.map(x => `<tr><td>${esc(new Date(x.fecha).toLocaleString())}</td><td>${esc(x.tipo_transaccion)}</td><td>${esc(x.documento)}</td><td>${esc(x.usuario)}</td><td>${esc(x.detalle)}</td></tr>`).join('') + '</table>'; }
   catch (err) { msg('logs', err.message, false); } };
 
-mostrar('crear');
+initAuth().then(() => {
+  $('#n8n-link').href = CFG.n8nUrl || 'http://localhost:5678';
+  if (CFG.authEnabled) {
+    $('#sesion').innerHTML = 'Usuario: <b>' + esc(nombreUsuario()) + '</b> <button class="btn" id="btn-salir">Cerrar sesión</button>';
+    $('#btn-salir').onclick = logout;
+  }
+  $('main').hidden = false;
+  mostrar('crear');
+});
 </script>
 </body>
 </html>
