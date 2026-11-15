@@ -16,7 +16,7 @@
         -200
       ],
       "parameters": {
-        "content": "## Flujo B: consulta en lenguaje natural (RAG)\nAbra el chat con el botón **Open chat** de esta pantalla y pregunte, por ejemplo: «¿Cuál es el empleado más joven que se ha registrado?».\nEl agente combina dos herramientas: **buscar_personas** (búsqueda semántica en pgvector) y **consultar_sql** (SELECT de solo lectura con el rol n8n_ro) para las preguntas de agregación.\nRequiere haber ejecutado antes el flujo 01 (ingesta) y tener las credenciales de OpenAI y Postgres configuradas.",
+        "content": "## Flujo B: consulta en lenguaje natural (RAG)\nAbra el chat con el botón **Open chat** de esta pantalla y pregunte, por ejemplo: «¿Cuál es el empleado más joven que se ha registrado?».\nEl agente combina dos herramientas: **buscar_personas** (búsqueda semántica en pgvector) y **consultar_sql** (SELECT de solo lectura con el rol n8n_ro) para las preguntas de agregación.\nRequiere haber ejecutado antes el flujo 01 (ingesta) y tener las credenciales de Gemini y Postgres configuradas.",
         "height": 170,
         "width": 820
       }
@@ -57,26 +57,22 @@
     {
       "id": "B4",
       "name": "Modelo de chat",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.3,
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
       "position": [
         60,
         380
       ],
       "parameters": {
-        "model": {
-          "__rl": true,
-          "mode": "id",
-          "value": "gpt-4o-mini"
-        },
+        "modelName": "models/gemini-2.5-flash",
         "options": {
           "temperature": 0
         }
       },
       "credentials": {
-        "openAiApi": {
-          "id": "oaiPersonas00001",
-          "name": "OpenAI account"
+        "googlePalmApi": {
+          "id": "geminiPersonas01",
+          "name": "Google Gemini (PaLM) API"
         }
       }
     },
@@ -120,21 +116,20 @@
     },
     {
       "id": "B7",
-      "name": "Embeddings OpenAI (consulta)",
-      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
-      "typeVersion": 1.2,
+      "name": "Embeddings Gemini (consulta)",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
       "position": [
         500,
         600
       ],
       "parameters": {
-        "model": "text-embedding-3-small",
-        "options": {}
+        "modelName": "models/gemini-embedding-001"
       },
       "credentials": {
-        "openAiApi": {
-          "id": "oaiPersonas00001",
-          "name": "OpenAI account"
+        "googlePalmApi": {
+          "id": "geminiPersonas01",
+          "name": "Google Gemini (PaLM) API"
         }
       }
     },
@@ -219,7 +214,7 @@
         ]
       ]
     },
-    "Embeddings OpenAI (consulta)": {
+    "Embeddings Gemini (consulta)": {
       "ai_embedding": [
         [
           {

@@ -123,21 +123,20 @@
     },
     {
       "id": "A7",
-      "name": "Embeddings OpenAI",
-      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
-      "typeVersion": 1.2,
+      "name": "Embeddings Gemini",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
       "position": [
         700,
         420
       ],
       "parameters": {
-        "model": "text-embedding-3-small",
-        "options": {}
+        "modelName": "models/gemini-embedding-001"
       },
       "credentials": {
-        "openAiApi": {
-          "id": "oaiPersonas00001",
-          "name": "OpenAI account"
+        "googlePalmApi": {
+          "id": "geminiPersonas01",
+          "name": "Google Gemini (PaLM) API"
         }
       }
     },
@@ -217,7 +216,7 @@
         ]
       ]
     },
-    "Embeddings OpenAI": {
+    "Embeddings Gemini": {
       "ai_embedding": [
         [
           {
